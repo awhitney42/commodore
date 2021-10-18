@@ -2,7 +2,7 @@
 
 This program demos the creation of a small alphabet of special characters and prints them on a dot matrix printer.
 
-It prints a secret message printed on lines 100 - 180. *Do you have what it takes to decode the message?*
+It prints a secret message printed on lines 100 - 180. **Do you have what it takes to decode the message?**
 
 The special character format in this program is specific to an Okidata 120 printer. However, CBM and other dot matrix printers supported this feature with a very similar bitmapping scheme for the dot matrix character values. For example, early CBM printers supported a 7 x 6 dot matrix as can been seen in the book PET/CBM Personal Computer Guide - Second Edition by Adam Osborne and Carroll S. Donahue in Chapter 6: Peripheral Devices on page 330. (See: https://archive.org/details/PET-CBM_Personal_Computer_Guide_2/page/n338/mode/2up)
 
