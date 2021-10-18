@@ -1,4 +1,4 @@
-   10 rem dot matrix spcial characters demo
+   10 rem dot matrix special characters demo
    20 rem can you decode the secret message?   
    30 x=25: rem number of special chars
    35 gosub 1000
