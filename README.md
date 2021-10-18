@@ -1,2 +1,1 @@
-# commodore
-Code for Commodore Computers
+# Code for Commodore Computers
