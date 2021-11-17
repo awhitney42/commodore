@@ -5,21 +5,26 @@
          ldy #$00
          jsr $ffbd ; setnam
 
-         lda #$05 ; file #
+         lda #$05 ; logical file #
          ldx #$02 ; 2 = rs-232 device
          ldy #$00 ; no cmd
          jsr $ffba ; setlfs
 
-         lda #$08 ; 1200 baud, 8 bits
+         ; c64 rs-232 registers
+
+         lda #$08 ; 1200 baud,8 bits
          sta $0293 ; serial control reg
 
-         lda #$00; fullduplex, no parity
+         lda #$00 ; fullduplex,no parity
          sta $0294 ; serial command reg
 
-         jsr $ffc0 ; open
+         ; open file
 
-         ldx #$05
+         jsr $ffc0 ; open file
+
+         ldx #$05  ; logical file #
          jsr $ffc9 ; chkout
+         bcs error
 
          lda #$41
          jsr $ffd2
@@ -29,6 +34,9 @@
          jsr $ffd2
          lda #$0d
          jsr $ffd2
+         lda #$00
+         jsr $ffd2 ; send final kludge
+         jsr wait
          jmp exit
 
 error    clc
@@ -41,6 +49,18 @@ error    clc
          lda #13
          jsr $ffd2
 
+wait     clc
+         lda $029d ; tx buffer start
+         cmp $029e ; tx buffer end
+         bcc wait
+         clc
+         lda $029b ; rx buffer start
+         cmp $029c ; rx buffer end
+         bcc wait
+done     rts
+
+
 exit     jsr $ffcc ; clrchn
+         lda #$05; logical file #
          jsr $ffc3 ; close
          rts
