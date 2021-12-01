@@ -103,6 +103,7 @@ bsave
          ldx #0
          stx tmp1
 sloop
+         ldx tmp1
          ldy #0
          lda (ptrlo),y
          cpx #$00
