@@ -5,14 +5,18 @@
 ; hi-res (bitmap) mode, then waits for
 ; a key and returns to basic.
 ;
-; run with: sys 49152
+; run with: sys 4096
+;
+; code and tables sit at $1000-$15ff,
+; below the bitmap at $2000 and clear
+; of turbo macro pro ($8000 and up).
 ;
 ; math is 16-bit signed fixed point in
 ; 4.12 format (sign + 3 integer bits +
 ; 12 fraction bits): 1.0 = $1000,
 ; 2.0 = $2000, -2.0 = $e000.
 
-         *= $c000
+         *= $1000
 
 ; vic-ii registers
 scrctl1  = $d011 ; v+17
@@ -27,9 +31,9 @@ ndx      = $c6   ; keys in buffer (198)
 chrout   = $ffd2
 
 ; tables built at run time
-ylo      = $c800 ; row addr lo, y 0-191
-yhi      = $c900 ; row addr hi, y 0-191
-pixmask  = $ca00 ; pixel masks 128..1
+ylo      = $1300 ; row addr lo, y 0-191
+yhi      = $1400 ; row addr hi, y 0-191
+pixmask  = $1500 ; pixel masks 128..1
 
 ; zero page (basic fac/temp area,
 ; free while this program runs)
@@ -356,10 +360,6 @@ plot     ldy yc
          ora pixmask,x
          sta (ptr),y
          rts
-
-; hireson
-; code from "graphics book for the
-; commodore 64" by axel plenge
 
 hireson  lda scrctl1
          ora #$20     ; bitmap mode on
