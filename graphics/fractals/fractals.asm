@@ -29,7 +29,7 @@ chrout   = $ffd2
 ; tables built at run time
 ylo      = $c800 ; row addr lo, y 0-191
 yhi      = $c900 ; row addr hi, y 0-191
-bits     = $ca00 ; pixel masks 128..1
+pixmask  = $ca00 ; pixel masks 128..1
 
 ; zero page (basic fac/temp area,
 ; free while this program runs)
@@ -37,7 +37,7 @@ mcnd     = $57 ; multiplicand (2)
 mplr     = $59 ; multiplier (2)
 prod     = $5b ; product (4)
 res      = $5c ; product >> 12 (2)
-sign     = $5f ; sign of product
+psign    = $5f ; sign of product
 zr       = $60 ; real part (2)
 zi       = $62 ; imaginary part (2)
 tr       = $64 ; t (2)
@@ -55,8 +55,9 @@ cilo     = $66 ; ci = 0.65 = $0a66
 cihi     = $0a
 maxk     = 50  ; iterations to plot
 
-; start values are 24-bit, 1.0 = $100000
-; so the top two bytes are 4.12 values.
+; start values are 24-bit with
+; 1.0 = $100000, so the top two
+; bytes are 4.12 values.
 ; step = 1/90, x0 = -139/90, y0 = 95/90
 steplo   = $83 ; 11651 = $002d83
 stephi   = $2d
@@ -269,8 +270,8 @@ wkey     lda ndx      ; wait 198,0
 
 smul     lda mcnd+1
          eor mplr+1
-         sta sign     ; bit 7 = sign
-         lda mcnd+1   ; mcnd = abs(mcnd)
+         sta psign    ; bit 7 = sign
+         lda mcnd+1   ; mcnd=abs(mcnd)
          bpl sm1
          sec
          lda #$00
@@ -279,7 +280,7 @@ smul     lda mcnd+1
          lda #$00
          sbc mcnd+1
          sta mcnd+1
-sm1      lda mplr+1   ; mplr = abs(mplr)
+sm1      lda mplr+1   ; mplr=abs(mplr)
          bpl sm2
          sec
          lda #$00
@@ -311,14 +312,14 @@ sm4      ror a        ; shift product
          dex
          bne sm3
 
-         ldx #4       ; res = prod >> 12
+         ldx #4       ; res = prod>>12
 sm5      lsr prod+3
          ror prod+2
          ror prod+1
          dex
          bne sm5
 
-         lda sign     ; apply sign
+         lda psign    ; apply sign
          bpl sm6
          sec
          lda #$00
@@ -352,7 +353,7 @@ plot     ldy yc
          tax
          ldy #$00
          lda (ptr),y
-         ora bits,x
+         ora pixmask,x
          sta (ptr),y
          rts
 
@@ -431,7 +432,7 @@ mktabs   lda #<ga     ; ptr = row base
          ldy #$00
 mt1      tya
          and #$07
-         ora ptr      ; base lo is n*64,
+         ora ptr      ; base lo is n*64
          sta ylo,y    ; so or = add
          lda ptr+1
          sta yhi,y
@@ -450,9 +451,9 @@ mt2      iny
          cpy #192
          bne mt1
 
-         lda #$80     ; 2^(7-(xc and 7))
+         lda #$80     ; 2^(7-(xc&7))
          ldx #$00
-mt3      sta bits,x
+mt3      sta pixmask,x
          inx
          lsr a
          bne mt3
