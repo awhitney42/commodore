@@ -27,9 +27,9 @@ ndx      = $c6   ; keys in buffer (198)
 chrout   = $ffd2
 
 ; tables built at run time
-ylo      = $c800 ; row address lo, y=0-191
-yhi      = $c900 ; row address hi, y=0-191
-bits     = $ca00 ; pixel masks 128,64,..1
+ylo      = $c800 ; row addr lo, y 0-191
+yhi      = $c900 ; row addr hi, y 0-191
+bits     = $ca00 ; pixel masks 128..1
 
 ; zero page (basic fac/temp area,
 ; free while this program runs)
@@ -111,9 +111,10 @@ yloop
          sta k
 
 iter
-         ; if abs(zi) >= 2.5 then zr*zr-zi*zi
-         ; < -2.5, so zr will escape. this
-         ; also keeps the math from overflow.
+         ; if abs(zi) >= 2.5 then
+         ; zr*zr-zi*zi < -2.5, so zr
+         ; will escape. this also keeps
+         ; the math from overflowing.
          lda zi+1
          bmi zineg
          cmp #$28
@@ -158,11 +159,15 @@ zisok
          lda zi+1
          sta mplr+1
          jsr smul
-         lda res+1    ; if abs(zr*zi) >= 2
-         bmi pneg     ; then 2*zr*zi would
-         cmp #$20     ; overflow, but zi is
-         bcs pbig     ; big so zr escapes
-         bcc pok      ; next pass anyway
+         ; if abs(zr*zi) >= 2 then
+         ; 2*zr*zi would overflow, but
+         ; zi is big so zr escapes on
+         ; the next pass anyway
+         lda res+1
+         bmi pneg
+         cmp #$20
+         bcs pbig
+         bcc pok
 pneg     cmp #$e0
          bcs pok
 pbig     lda #$00     ; zi = 3.0
@@ -186,7 +191,7 @@ setzr    lda tr       ; zr = t
          sta zr+1
          inc k        ; k = k+1
          lda k
-         cmp #maxk    ; if k = 50 then plot
+         cmp #maxk    ; if k=50 plot
          beq plotit
 
          ; if abs(zr) < 2 then iter
@@ -198,7 +203,7 @@ setzr    lda tr       ; zr = t
 zrneg    cmp #$e0
          bcc nexty    ; zr < -2
          bne zrok     ; zr > -2
-         lda zr       ; zr = -2 if lo = 0
+         lda zr       ; zr=-2 if lo=0
          beq nexty
 zrok     jmp iter
 
@@ -252,7 +257,7 @@ wkey     lda ndx      ; wait 198,0
          beq wkey
          lda #$00     ; discard the key
          sta ndx
-         jsr hiresoff ; turn graphics off
+         jsr hiresoff ; graphics off
          lda #147     ; clear screen
          jsr chrout
          rts
@@ -264,7 +269,7 @@ wkey     lda ndx      ; wait 198,0
 
 smul     lda mcnd+1
          eor mplr+1
-         sta sign     ; bit 7 = result sign
+         sta sign     ; bit 7 = sign
          lda mcnd+1   ; mcnd = abs(mcnd)
          bpl sm1
          sec
@@ -284,7 +289,7 @@ sm1      lda mplr+1   ; mplr = abs(mplr)
          sbc mplr+1
          sta mplr+1
 
-         ; unsigned 16x16 = 32-bit multiply
+         ; unsigned 16x16 = 32-bit
 sm2      lda #$00
          sta prod+2
          sta prod+3
@@ -292,13 +297,13 @@ sm2      lda #$00
 sm3      lsr mplr+1
          ror mplr
          bcc sm4
-         lda prod+2   ; add mcnd to hi word
+         lda prod+2   ; add mcnd to hi
          clc
          adc mcnd
          sta prod+2
          lda prod+3
          adc mcnd+1
-sm4      ror a        ; shift product right
+sm4      ror a        ; shift product
          sta prod+3
          ror prod+2
          ror prod+1
@@ -362,7 +367,7 @@ hireson  lda scrctl1
          and #$ef     ; multi-color off
          sta scrctl2
          lda memctl
-         ora #$08     ; graphics at $2000
+         ora #$08     ; bitmap at $2000
          sta memctl
          rts
 
@@ -375,7 +380,7 @@ hiresoff lda scrctl1
          and #$ef     ; multi-color off
          sta scrctl2
          lda memctl
-         and #$f7     ; characters at $1000
+         and #$f7     ; chars at $1000
          sta memctl
          rts
 
@@ -426,8 +431,8 @@ mktabs   lda #<ga     ; ptr = row base
          ldy #$00
 mt1      tya
          and #$07
-         ora ptr      ; base lo is a multiple
-         sta ylo,y    ; of 64, so or = add
+         ora ptr      ; base lo is n*64,
+         sta ylo,y    ; so or = add
          lda ptr+1
          sta yhi,y
          tya
