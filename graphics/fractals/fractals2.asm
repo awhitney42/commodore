@@ -9,10 +9,11 @@
 ;   draws a frame and saves it to disk
 ;   as frame00, frame01, ... then shows
 ;   a box. move it with the cursor keys
-;   or w/a/s/d, press return to zoom 2x
-;   into it, or q to quit. run/stop
-;   quits while drawing. frames stop
-;   at frame09 (512x zoom).
+;   or w/a/s/d. + makes it smaller and
+;   - larger, for a 2x, 4x or 8x zoom.
+;   return zooms into it, q quits.
+;   run/stop quits while drawing. it
+;   stops after 512x total zoom.
 ;
 ; sys 4099 - play back saved frames.
 ;   any key quits.
@@ -85,8 +86,15 @@ dev      = $1c22 ; disk device
 tmp      = $1c23
 psign    = $1c24 ; sign of product
 tr       = $1c25 ; t (4)
-fname    = $1c30 ; "@0:frame00" (10)
-fname2   = $1c33 ; "frame00", no "@0:"
+step8    = $1c29 ; 8*step (4)
+bsize    = $1c2d ; box size 0-2
+zlevel   = $1c2e ; zoom so far, 2^n
+bw       = $1c2f ; box width, bytes
+bh       = $1c30 ; box height, rows
+bw8      = $1c31 ; 8*bw
+redge    = $1c32 ; 8*(bw-1)
+fname    = $1c40 ; "@0:frame00" (10)
+fname2   = $1c43 ; "frame00", no "@0:"
 ylo      = $1d00 ; row addr lo (200)
 yhi      = $1e00 ; row addr hi (200)
 cmask    = $1f00 ; color masks (16)
@@ -112,9 +120,9 @@ ptr      = $fb ; pointer (2)
 ptr2     = $fd ; pointer (2)
 
 ; constants
-lastfr   = 9     ; last frame number
-k0       = 50    ; maxk for frame 0
-kstep    = 20    ; maxk added per zoom
+lastz    = 9     ; stop at 2^9 = 512x
+k0       = 50    ; maxk at 1x
+kstep    = 20    ; maxk added per 2x
 cr0      = $00   ; cr = -0.25
 cr1      = $00   ;    = $ffc00000
 cr2      = $c0
@@ -139,6 +147,11 @@ view0    .byte $2e,$d8,$02,$00
 fname0   .byte $40,$30,$3a,$46,$52
          .byte $41,$4d,$45,$30,$30
 
+; box width (bytes) and height (rows)
+; for 2x, 4x and 8x zoom
+bwtab    .byte 20,10,5
+bhtab    .byte 100,50,25
+
 ; "no frames" + return
 nofrm    .byte $4e,$4f,$20,$46,$52
          .byte $41,$4d,$45,$53,$0d
@@ -158,6 +171,8 @@ rn1      lda view0,x  ; step
          bpl rn1
          lda #$00
          sta frame
+         sta zlevel
+         sta bsize
          lda #k0
          sta maxk
 
@@ -165,17 +180,13 @@ rnframe  jsr gfxon
          jsr draw
          bcs rnquit   ; run/stop
          jsr savefr
-         lda frame
-         cmp #lastfr
+         lda zlevel
+         cmp #lastz
          beq rnlast
          jsr select
          bcs rnquit   ; q
          jsr zoom
          inc frame
-         clc
-         lda maxk
-         adc #kstep
-         sta maxk
          jmp rnframe
 
 rnlast   jsr waitkey
@@ -600,14 +611,26 @@ mq2      rts
 
 ; ------------------------------------
 ; select
-; move the zoom box. returns carry
-; clear to zoom, set to quit.
+; move and size the zoom box.
+; returns carry clear to zoom, set
+; to quit.
 
 select   lda #$00
          sta ndx      ; flush keys
-         lda #10      ; center the box
+         jsr maxsize  ; keep the size
+         cmp bsize    ; within 512x
+         bcs se0
+         sta bsize
+se0      jsr setbox
+         lda #40      ; center the box
+         sec
+         sbc bw
+         lsr a
          sta bcol
-         lda #50
+         lda #200
+         sec
+         sbc bh
+         lsr a
          sta brow
          jsr xorbox
 se1      jsr getin
@@ -617,6 +640,10 @@ se1      jsr getin
          beq sezoom
          cmp #$51     ; q
          beq sequit
+         cmp #$2b     ; +
+         beq sesmall
+         cmp #$2d     ; -
+         beq sebig
          cmp #$91     ; crsr up
          beq seup
          cmp #$57     ; w
@@ -640,6 +667,18 @@ sezoom   clc
 sequit   sec
          rts
 
+sesmall  jsr maxsize  ; already the
+         cmp bsize    ; smallest box?
+         beq se1
+         bcc se1
+         ldx bsize
+         inx
+         jmp resize
+sebig    ldx bsize    ; already the
+         beq se1      ; largest box?
+         dex
+         jmp resize
+
 seup     jsr xorbox   ; erase
          lda brow
          sec
@@ -649,12 +688,16 @@ seup     jsr xorbox   ; erase
 se2      sta brow
          jmp sedraw
 sedown   jsr xorbox
+         lda #200     ; tmp = last row
+         sec
+         sbc bh
+         sta tmp
          lda brow
          clc
          adc #$04
-         cmp #101
+         cmp tmp
          bcc se3
-         lda #100
+         lda tmp
 se3      sta brow
          jmp sedraw
 seleft   jsr xorbox
@@ -663,28 +706,118 @@ seleft   jsr xorbox
          dec bcol
          jmp sedraw
 seright  jsr xorbox
-         lda bcol
-         cmp #20
+         lda #40      ; last column
+         sec
+         sbc bw
+         cmp bcol
          beq sedraw
          inc bcol
 sedraw   jsr xorbox   ; draw
          jmp se1
 
+; resize
+; change the box to size x, keeping
+; its center where it was
+
+resize   txa
+         pha
+         jsr xorbox   ; erase
+         lda bw       ; cnt = mid col
+         lsr a
+         clc
+         adc bcol
+         sta cnt
+         lda bh       ; row = mid row
+         lsr a
+         clc
+         adc brow
+         sta row
+         pla
+         sta bsize
+         jsr setbox
+         lda bw       ; bcol = cnt-bw/2
+         lsr a
+         sta tmp
+         lda cnt
+         sec
+         sbc tmp
+         bcs rs1
+         lda #$00     ; off the left
+rs1      sta bcol
+         lda #40      ; off the right?
+         sec
+         sbc bw
+         cmp bcol
+         bcs rs2
+         sta bcol
+rs2      lda bh       ; brow = row-bh/2
+         lsr a
+         sta tmp
+         lda row
+         sec
+         sbc tmp
+         bcs rs3
+         lda #$00     ; off the top
+rs3      sta brow
+         lda #200     ; off the bottom?
+         sec
+         sbc bh
+         cmp brow
+         bcs rs4
+         sta brow
+rs4      jmp sedraw
+
+; maxsize
+; a = largest box size that keeps the
+; total zoom within 2^lastz
+
+maxsize  lda #lastz-1
+         sec
+         sbc zlevel
+         cmp #$03
+         bcc ms1
+         lda #$02
+ms1      rts
+
+; setbox
+; set bw, bh, bw8 and redge for the
+; box size in bsize
+
+setbox   ldx bsize
+         lda bwtab,x
+         sta bw
+         lda bhtab,x
+         sta bh
+         lda bw
+         asl a
+         asl a
+         asl a
+         sta bw8
+         sec
+         sbc #$08
+         sta redge
+         rts
+
 ; xorbox
-; draw or erase the zoom box, 80x100
-; pixels at byte column bcol and
-; row brow, by xor-ing the bitmap.
+; draw or erase the zoom box, bw
+; bytes by bh rows, at byte column
+; bcol and row brow, by xor-ing the
+; bitmap.
 
 xorbox   ldy brow     ; top edge
          jsr xbline
          lda brow     ; bottom edge
          clc
-         adc #99
+         adc bh
+         sec
+         sbc #$01
          tay
          jsr xbline
          lda brow     ; sides
          sta row
-         lda #98
+         lda bh
+         sec
+         sbc #$02
          sta cnt
 xb1      inc row
          ldy row
@@ -693,7 +826,7 @@ xb1      inc row
          lda (ptr),y
          eor #$c0
          sta (ptr),y
-         ldy #152     ; right pixel
+         ldy redge    ; right pixel
          lda (ptr),y
          eor #$03
          sta (ptr),y
@@ -701,7 +834,7 @@ xb1      inc row
          bne xb1
          rts
 
-xbline   jsr xbaddr   ; 20 bytes, row y
+xbline   jsr xbaddr   ; bw bytes, row y
          ldy #$00
 xbl1     lda (ptr),y
          eor #$ff
@@ -710,40 +843,54 @@ xbl1     lda (ptr),y
          clc
          adc #$08
          tay
-         cpy #160
+         cpy bw8
          bne xbl1
          rts
 
-xbaddr   lda bcol     ; ptr = row y
-         asl a        ;   + 8*bcol
+xbaddr   lda #$00     ; ptr = row y
+         sta ptr+1    ;   + 8*bcol
+         lda bcol
          asl a
          asl a
+         asl a        ; can carry out
+         rol ptr+1
          clc
          adc ylo,y
          sta ptr
          lda yhi,y
-         adc #$00
+         adc ptr+1
          sta ptr+1
          rts
 
 ; ------------------------------------
 ; zoom
 ; the box becomes the new view:
-; x0 = x0 + 8*bcol*step
-; y0 = y0 - brow*step
-; step = step/2
+;   x0 = x0 + 8*bcol*step
+;   y0 = y0 - brow*step
+; then step is halved 1-3 times, by
+; box size, adding kstep to maxk each
+; time.
 
-zoom     lda bcol
-         asl a
-         asl a
-         asl a
+zoom     ldx #$03     ; step8 = 8*step
+zm0      lda step,x
+         sta step8,x
+         dex
+         bpl zm0
+         ldx #$03
+zm0a     asl step8
+         rol step8+1
+         rol step8+2
+         rol step8+3
+         dex
+         bne zm0a
+         lda bcol
          sta cnt
          beq zm2
 zm1      clc
          ldx #$00
          ldy #$04
 zm1a     lda x0,x
-         adc step,x
+         adc step8,x
          sta x0,x
          inx
          dey
@@ -764,10 +911,19 @@ zm3a     lda y0,x
          bne zm3a
          dec cnt
          bne zm3
-zm4      lsr step+3
+zm4      ldx bsize    ; halve bsize+1
+         inx          ; times
+zm5      lsr step+3
          ror step+2
          ror step+1
          ror step
+         inc zlevel
+         clc
+         lda maxk
+         adc #kstep
+         sta maxk
+         dex
+         bne zm5
          rts
 
 ; ------------------------------------
